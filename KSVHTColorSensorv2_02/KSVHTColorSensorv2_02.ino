@@ -1,7 +1,15 @@
 /*
  * Подключение HiTechnic Color Sensor v1.5 & v2 к Arduino
  * (c) Serg Kosachenko
- * 
+ * Подключение к разъему NXT -> Arduino
+   white -> 
+   black -> 
+   red -> battery – (GND) 
+   green -> Arduino +3.3V 
+   yellow -> Arduino SCL (A5)
+   blue -> Arduino SDA (A4)
+   
+ * ToDo:
  * 50 Hz operating 0x35
  * 60 Hz operating 0x36
  */
