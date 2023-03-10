@@ -18,7 +18,7 @@
 #include <Wire.h>
 
 int htColorSensorAddress = 0x01; //we got this from I2C Scanner
-int TestValue;  //variable where we will store compass heading
+int TestValue;
 byte ColorRed, ColorGreen, ColorBlue;
 
 /**
@@ -52,7 +52,7 @@ void setup() {
   Serial.begin(9600); //sets up Serial monitor
   Serial.println("Start...");
 
-  //The code below turns on i2c, opens communication to compass
+  //The code below turns on i2c, opens communication to color
   //sensor, and does a test connection.
   Wire.begin(); //turn on i2c
   Wire.beginTransmission(htColorSensorAddress); //open communication to sensor 
@@ -77,7 +77,7 @@ void setup() {
 void loop(){
   float H,S,V;
   
-  ReadColorSensor(); //calls the function listed below
+  ReadColorSensor();
   Serial.print("Color number: ");
   Serial.println(TestValue);
   
@@ -101,7 +101,7 @@ void loop(){
 }
 
 void ReadColorSensor(){
-  //this code lets the arduino know you want to talk to the compass Sensor
+  //this code lets the arduino know you want to talk to the HT Color Sensor
   Wire.beginTransmission(htColorSensorAddress);
   Wire.write(0x42); // color number
   Wire.endTransmission();
@@ -115,13 +115,11 @@ void ReadColorSensor(){
 
 void ReadVersionSensor(){
   char c;
-  //this code lets the arduino know you want to talk to the compass Sensor
   Wire.beginTransmission(htColorSensorAddress);
-  Wire.write(0x00); // color number
+  Wire.write(0x00); // version sensor
   Wire.endTransmission();
 
-  //the code below requests 1 bytes of information 
-  //to make a number 0-17 that it saves in the variable TestValue
+  //the code below requests 24 bytes of information 
   Wire.requestFrom(htColorSensorAddress, 24); 
    while(Wire.available() < 24);
    for (int i=0; i<24;i++){
@@ -132,13 +130,11 @@ void ReadVersionSensor(){
 }
 
 void ReadRGBSensor(){
-  //this code lets the arduino know you want to talk to the compass Sensor
   Wire.beginTransmission(htColorSensorAddress);
-  Wire.write(0x43); // Red
+  Wire.write(0x43); // Red+Green+Blue
   Wire.endTransmission();
 
-  //the code below requests 1 bytes of information 
-  //to make a number 0-17 that it saves in the variable TestValue
+  //the code below requests 3 bytes of information RGB
   Wire.requestFrom(htColorSensorAddress, 3); 
    while(Wire.available() < 3);
    ColorRed = Wire.read();
