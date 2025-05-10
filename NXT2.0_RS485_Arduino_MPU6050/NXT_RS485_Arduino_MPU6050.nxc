@@ -1,0 +1,59 @@
+//Проект подключения гиросокопа к LEGO NXT2.0
+//через NXT - RS485 - Arduino - i2c - MPU6050
+//!!!на NXT2.0 требуется enhanced FirmWare (тестил на 132)
+// (c) Kosachenko S.V.
+#define RS485_BAUD 57600
+
+#define TOWAIT 2000
+#define MSG "Hello Arduino  "
+
+int MPU6050Angle = 0; //угол в градусах -179..179 от гироскопа MPU6050
+int MPU6050Status = 0; //статус последнего получения данных от MPU6050 по RS485
+ 
+// -------------------------------------------------------------
+void printMsg(int angle, int result) {
+  TextOut(0, LCD_LINE3, "       Baud");
+  NumOut(0, LCD_LINE3, RS485_BAUD);
+  TextOut(0, LCD_LINE4, "MPU6050:     S:");
+  NumOut(8*6, LCD_LINE4, MPU6050Angle);
+  //NumOut(17*6, LCD_LINE4, MPU6050Status); //Если 1 - Ок, если 0 - ошибка
+  NumOut(15*6, LCD_LINE4, result); //Если 1 - Ок, если 0 - ошибка
+}
+ 
+// -------------------------------------------------------------
+task main() {
+  int i = 0;
+  int cnt = 0;
+  byte outbuffer[];
+  byte inbuffer[];
+  char result;
+
+  //настройка высокой скорости 4 порта для RS485
+  SetSensorType(IN_4, SENSOR_TYPE_HIGHSPEED);
+  Wait(100);
+ 
+  // we use odd parity on the Arduino side
+  // see: http://forums.nxtasy.org/index.php?showtopic=3871
+  RS485Uart(HS_BAUD_##RS485_BAUD, HS_MODE_8_DATA|HS_MODE_O_PARITY|HS_MODE_10_STOP);
+  Wait(100);
+
+  //Подготовить команду "1" для передачи на Arduino - означает "пришли угол гироскопа"
+  StrToByteArray("1", outbuffer);
+  //TextOut(0, LCD_LINE1, "RS485 <> Arduino");
+ 
+  while (true) {
+ 
+    result = RS485Write(outbuffer);
+    
+    //while (!RS485DataAvailable()) {}
+    if (RS485DataAvailable()){
+		result = RS485Read(inbuffer);
+		//printMsg(inbuffer, result); 
+		MPU6050Angle = inbuffer[0] | (inbuffer[1]<<8);
+    }
+
+    printMsg(MPU6050Angle, result);                                      
+    //Wait(TOWAIT);                                             
+    Wait(500);
+  }                                                           
+}        
