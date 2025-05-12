@@ -1,0 +1,211 @@
+//Проект к РобоКап 2025 Футбол Entry LW
+// Датчики на LEGO NXT2.0:
+// 4 порт - подключение гиросокопа к LEGO NXT2.0 (NXT - RS485 - Arduino - i2c - MPU6050)
+// 2 порт - HT IRSeekerV2
+//!!!на NXT2.0 требуется enhanced FirmWare (тестил на 132)
+// (c) Kosachenko S.V.
+
+#define RS485_BAUD 57600
+#define IRSEEKER IN_2
+int dir=0,s1,s2,s3,s4,s5;
+int rast=0;
+int azimut=0;
+int compass=0;
+int up = 0;
+int rastAtaka = 150; //подобрать эмпирически
+
+long timeStart = 0, time = 0;
+
+//ФОРМУЛА для компаса!!!
+//up = (compass + 540 - azimut) % 360 - 180;
+
+int MPU6050Angle = 0; //угол в градусах -179..179 от гироскопа MPU6050
+int MPU6050Status = 0; //статус последнего получения данных от MPU6050 по RS485
+
+byte outbuffer[];
+byte inbuffer[];
+char result;
+ 
+// -------------------------------------------------------------
+void printMsg(int angle, int result) {
+	//в строке 16 символов
+	//вывести информацию от IRSeeker сектор, где мяч, и расстояние до него
+	TextOut(0,LCD_LINE1,"IRdir:  ras:    ");
+	NumOut(6*6,LCD_LINE1,dir);
+	NumOut(12*6,LCD_LINE1,rast);
+
+	TextOut(0, LCD_LINE3, "       Baud");
+	NumOut(0, LCD_LINE3, RS485_BAUD);
+	TextOut(0, LCD_LINE4, "MPU6050:     S: ");
+	NumOut(8*6, LCD_LINE4, MPU6050Angle);
+	NumOut(15*6, LCD_LINE4, MPU6050Status); //Если 1 - Ок, если 0 - ошибка
+	//NumOut(15*6, LCD_LINE4, result); //Если 1 - Ок, если 0 - ошибка
+}
+
+//--------------------------------------------------------------
+//считать угол с гироскопа
+void getGyro() { 
+	time = CurrentTick() - timeStart;
+	//Запрашиваем данные через RS485 о гироскопе не чаще заданного времени в миллисекундах (50)
+	if (time > 50) {
+		timeStart= CurrentTick();
+		//считать угол с гироскопа
+		result = RS485Write(outbuffer);
+		if (RS485DataAvailable()){
+			result = RS485Read(inbuffer);
+			MPU6050Angle = inbuffer[0] | (inbuffer[1]<<8);
+			up = MPU6050Angle;
+		}
+		MPU6050Status = result;
+		printMsg(MPU6050Angle, result); 
+    }
+}
+
+// -------------------------------------------------------------
+//считать с IRSeeker расстояние и направление до мяча
+void getIR (){
+    ReadSensorHTIRSeeker2AC(IRSEEKER, dir, s1, s2, s3, s4, s5);
+	rast = s1 + s2 + s3 + s4 + s5; // расстояние до мяча
+}
+
+// -------------------------------------------------------------
+//повернуть направо на 90 градусов
+void napravo(){
+	OnFwd(OUT_BC, 0); //стоп
+	Wait(100); 
+	OnFwd(OUT_B, 70);  OnFwd(OUT_C, -70); //поворот наместе направо
+	Wait(540); //время поворота на 90 градусов подобрать экспериментально!!!
+	OnFwd(OUT_BC, 0); //стоп
+	Wait(100);
+}
+
+// -------------------------------------------------------------
+//повернуть налево на 90 градусов
+void nalevo(){
+	OnFwd(OUT_BC, 0); //стоп
+	Wait(100); 
+	OnFwd(OUT_B, -70);  OnFwd(OUT_C, 70); //поворот наместе налево
+	Wait(540); //время поворота на 90 градусов подобрать экспериментально!!!
+	OnFwd(OUT_BC, 0); //стоп
+	Wait(100);
+}
+ 
+// -------------------------------------------------------------
+task main() {
+  int i = 0;
+  int cnt = 0;
+  
+  SetSensorLowspeed(IRSEEKER);
+  //настройка высокой скорости 4 порта для RS485
+  SetSensorType(IN_4, SENSOR_TYPE_HIGHSPEED);
+  Wait(100);
+ 
+  // we use odd parity on the Arduino side
+  // see: http://forums.nxtasy.org/index.php?showtopic=3871
+  RS485Uart(HS_BAUD_##RS485_BAUD, HS_MODE_8_DATA|HS_MODE_O_PARITY|HS_MODE_10_STOP);
+  Wait(100);
+
+  //Подготовить команду "1" для передачи на Arduino - означает "пришли угол гироскопа"
+  StrToByteArray("1", outbuffer);
+  
+ 
+  while (true) {
+	//считать с IRSeeker расстояние и направление до мяча
+    ReadSensorHTIRSeeker2AC(IRSEEKER, dir, s1, s2, s3, s4, s5);
+	rast = s1 + s2 + s3 + s4 + s5; // расстояние до мяча
+  
+    //считать угол с гироскопа
+	getGyro();
+
+//===игра в футбол=============================
+		//ехать к мячу
+		if (rastAtaka > rast || (rastAtaka <= rast && dir <> 5)) {
+			TextOut(0, LCD_LINE5, "Ezda            ");
+			//если мяч впереди - прямо!!!
+			if(dir == 5) OnFwd(OUT_BC, 100);
+			
+			//если мяч слева - рулим влево
+			if(dir < 5) { OnFwd(OUT_B, 0); OnFwd(OUT_C, 50); }
+			//!!!!налево на месте	
+			if(dir == 1) { OnFwd(OUT_B, -70); OnFwd(OUT_C, 50);	}
+			if(dir == 2) { OnFwd(OUT_B, -50); OnFwd(OUT_C, 50);	}
+			if(dir == 3) { OnFwd(OUT_B, 20);  OnFwd(OUT_C, 70);	}
+			if(dir == 4) { OnFwd(OUT_B, 50);  OnFwd(OUT_C, 100);}
+				
+			//если мяч справа - направо
+			if(dir > 5) { OnFwd(OUT_B, 50);   OnFwd(OUT_C, 0); }
+			if(dir == 6) { OnFwd(OUT_B, 100); OnFwd(OUT_C, 50); }
+			if(dir == 7) { OnFwd(OUT_B, 70);  OnFwd(OUT_C, 20); }
+			if(dir == 8) { OnFwd(OUT_B, 50);  OnFwd(OUT_C, -50); }
+			//!!!!направо на месте	
+			if(dir == 9) { OnFwd(OUT_B, 50);  OnFwd(OUT_C, -70); }
+		} //кон ехать к мячу
+		
+		//объезд мяча СЛЕВА, если к мячу робот подъехал под углом более 40 гр от азимута на ворота
+		if(rastAtaka <= rast && abs(up)> 40 && up > 0){
+			TextOut(0, LCD_LINE5, "Ob'ezd SLEVA   ");
+			napravo();
+			 
+			getIR(); //считать с IRSeeker расстояние и направление до мяча
+			getGyro(); //считать угол с гироскопа			
+			while (up < 80 || up > 100 ) { //ехать по дуге до 90 град к азимуту на ворота
+				OnFwd(OUT_B, 20);  OnFwd(OUT_C, 70); //езда по дуге направо вокруг мяча
+				getIR(); //считать с IRSeeker расстояние и направление до мяча
+				getGyro(); //считать угол с гироскопа			
+			}
+			PlayTone(3520, 200);
+			OnFwd(OUT_BC, 0); //стоп
+			Wait(50);
+			nalevo();
+			getIR(); //считать с IRSeeker расстояние и направление до мяча
+			getGyro(); //считать угол с гироскопа			
+		}
+		//объезд мяча СПРАВА, если к мячу робот подъехал под углом более 40 гр от азимута на ворота
+		if(rastAtaka <= rast && abs(up)> 40 && up < 0){
+			TextOut(0, LCD_LINE5, "Ob'ezd SPRAVA  ");
+			nalevo();
+			 
+			getIR(); //считать с IRSeeker расстояние и направление до мяча
+			getGyro(); //считать угол с гироскопа			
+			while (up > -80 || up < -100 ) { //ехать по дуге до -90 град к азимуту на ворота
+				OnFwd(OUT_B, 70);  OnFwd(OUT_C, 20); //езда по дуге вокруг мяча
+				getIR(); //считать с IRSeeker расстояние и направление до мяча
+				getGyro(); //считать угол с гироскопа			
+			}
+			PlayTone(3520, 200);
+			OnFwd(OUT_BC, 0); //стоп
+			Wait(50);
+			napravo();
+			getIR(); //считать с IRSeeker расстояние и направление до мяча
+			getGyro(); //считать угол с гироскопа			
+		}
+
+		//Атака!!!
+		if(rastAtaka <= rast && abs(up)<= 40 && dir == 5){
+			TextOut(0, LCD_LINE5, "Ataka!!!        ");
+			OnFwd(OUT_BC, 100); //вперед
+			} 
+
+		int flagPause;
+		// Снять робота оранжевой кнопкой с паузы Robot off Pause
+		if (flagPause) {
+			while(ButtonPressed(BTNCENTER, false) == 0) { Wait(50); }
+			flagPause = 0;
+			TextOut(0, LCD_LINE7, "                ");
+			PlayTone(1046, 500);
+			while(ButtonPressed(BTNCENTER, false) == 1) { Wait(50); }
+		}
+
+		// Поставить робота оранжевой кнопкой на паузу Robot on Pause
+		if (ButtonPressed(BTNCENTER, false) == 1 && flagPause == 0){
+			while(ButtonPressed(BTNCENTER, false) == 0) { Wait(50); }
+			flagPause = 1;
+			TextOut(0, LCD_LINE7, "   PAUSE        ");
+			PlayTone(1760, 500);
+			while(ButtonPressed(BTNCENTER, false) == 1) { Wait(50); }
+		}
+
+//=============================================
+    Wait(50);
+  }                                                           
+}        

@@ -1,0 +1,135 @@
+//Проект к робокап 2025, подключения гиросокопа к LEGO NXT2.0
+//через NXT - RS485 - Arduino - i2c - MPU6050
+//!!!на NXT2.0 требуется enhanced FirmWare (тестил на 132)
+// (c) Kosachenko S.V.
+#define RS485_BAUD 57600
+#define IRSEEKER IN_2
+int dir,s1,s2,s3,s4,s5;
+int azimut=0;
+int compass=0;
+int up = 0;
+int rastAtaka = 100; //подобрать эмпирически
+
+//СЕКРЕТНАЯ ФОРМУЛА!!!
+//up = (compass + 540 - azimut) % 360 - 180;
+
+int MPU6050Angle = 0; //угол в градусах -179..179 от гироскопа MPU6050
+int MPU6050Status = 0; //статус последнего получения данных от MPU6050 по RS485
+
+byte outbuffer[];
+byte inbuffer[];
+char result;
+ 
+// -------------------------------------------------------------
+void printMsg(int angle, int result) {
+  TextOut(0, LCD_LINE3, "       Baud");
+  NumOut(0, LCD_LINE3, RS485_BAUD);
+  TextOut(0, LCD_LINE4, "MPU6050:     S:");
+  NumOut(8*6, LCD_LINE4, MPU6050Angle);
+  //NumOut(17*6, LCD_LINE4, MPU6050Status); //Если 1 - Ок, если 0 - ошибка
+  NumOut(15*6, LCD_LINE4, result); //Если 1 - Ок, если 0 - ошибка
+  
+  TextOut(5,LCD_LINE1,"     "); NumOut(5,LCD_LINE1,rast);
+  TextOut(45,LCD_LINE1,"     "); NumOut(45,LCD_LINE1,dir);
+}
+
+//--------------------------------------------------------------
+void getGyro() {
+   //считать угол с гироскопа
+    result = RS485Write(outbuffer);
+    if (RS485DataAvailable()){
+		result = RS485Read(inbuffer);
+		MPU6050Angle = inbuffer[0] | (inbuffer[1]<<8);
+		up = MPU6050Angle;
+    }
+    printMsg(MPU6050Angle, result); 
+}
+ 
+// -------------------------------------------------------------
+task main() {
+  int i = 0;
+  int cnt = 0;
+  
+  SetSensorLowspeed(IRSEEKER);
+  //настройка высокой скорости 4 порта для RS485
+  SetSensorType(IN_4, SENSOR_TYPE_HIGHSPEED);
+  Wait(100);
+ 
+  // we use odd parity on the Arduino side
+  // see: http://forums.nxtasy.org/index.php?showtopic=3871
+  RS485Uart(HS_BAUD_##RS485_BAUD, HS_MODE_8_DATA|HS_MODE_O_PARITY|HS_MODE_10_STOP);
+  Wait(100);
+
+  //Подготовить команду "1" для передачи на Arduino - означает "пришли угол гироскопа"
+  StrToByteArray("1", outbuffer);
+  
+ 
+  while (true) {
+	//считать с IRSeeker расстояние и направление до мяча
+    ReadSensorHTIRSeeker2AC(IRSEEKER, dir, s1, s2, s3, s4, s5);
+	int rast = s1 + s2 + s3 + s4 + s5; // расстояние до мяча
+  
+    //считать угол с гироскопа
+    result = RS485Write(outbuffer);
+    if (RS485DataAvailable()){
+		result = RS485Read(inbuffer);
+		MPU6050Angle = inbuffer[0] | (inbuffer[1]<<8);
+		up = MPU6050Angle;
+    }
+    printMsg(MPU6050Angle, result);                                      
+
+//===игра в футбол=============================
+		//ехать к мячу
+		if (rastAtaka < rast) {
+		
+			//если мяч впереди - прямо!!!
+			if(dir == 5) OnFwd(OUT_BC, 100);
+			
+			//если мяч слева - рулим влево
+			if(dir < 5) { OnFwd(OUT_B, 0); OnFwd(OUT_C, 50); }
+			//!!!!налево на месте	
+			if(dir == 1) { OnFwd(OUT_B, -70); OnFwd(OUT_C, 50);	}
+			if(dir == 2) { OnFwd(OUT_B, -50); OnFwd(OUT_C, 50);	}
+			if(dir == 3) { OnFwd(OUT_B, 20);  OnFwd(OUT_C, 70);	}
+			if(dir == 4) { OnFwd(OUT_B, 50);  OnFwd(OUT_C, 100);}
+				
+			//если мяч справа - направо
+			if(dir > 5) { OnFwd(OUT_B, 50);   OnFwd(OUT_C, 0); }
+			if(dir == 6) { OnFwd(OUT_B, 100); OnFwd(OUT_C, 50); }
+			if(dir == 7) { OnFwd(OUT_B, 70);  OnFwd(OUT_C, 20); }
+			if(dir == 8) { OnFwd(OUT_B, 50);  OnFwd(OUT_C, -50); }
+			//!!!!направо на месте	
+			if(dir == 9) { OnFwd(OUT_B, 50);  OnFwd(OUT_C, -70); }
+		} //кон ехать к мячу
+		
+		//объезд мяча
+		if(rastAtaka >= rast && abs(up)> 40){
+			OnFwd(OUT_BC, 0); //стоп
+			Wait(100); 
+			OnFwd(OUT_B, 70);  OnFwd(OUT_C, -70); //поворот направо
+			Wait(540); //время поворота подобрать!!!
+			OnFwd(OUT_BC, 0); //стоп
+			Wait(100);
+			 
+			//compass = SensorHTCompass(IN_3);
+			//up = (compass + 540 - azimut) % 360 - 180;
+			getGyro();
+			while (abs(abs(up)-90) > 20 ) {
+				OnFwd(OUT_B, 20);  OnFwd(OUT_C, 70);
+				//compass = SensorHTCompass(IN_3);
+				//up = (compass + 540 - azimut) % 360 - 180;
+				getGyro();
+			}
+			OnFwd(OUT_BC, 0); //стоп
+			Wait(50);
+		}
+		//Атака!!!
+		if(rastAtaka >= rast && abs(up)<= 40){
+			OnFwd(OUT_BC, 100); //стоп
+			} 
+
+
+//=============================================
+    Wait(50);
+  }                                                           
+}        
